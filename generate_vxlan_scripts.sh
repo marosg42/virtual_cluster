@@ -84,14 +84,15 @@ sudo ip addr add 10.243.10.1/24 dev br0.2744
 
 VXLAN_SUBNET="192.168.240.0/24"
 VM_SUBNET="10.241.144.0/21"
-ip route add \$VXLAN_SUBNET dev br0 src 192.168.240.101
 sudo ip route add \$VXLAN_SUBNET dev br0 src 192.168.240.101
 echo 1 | sudo tee /proc/sys/net/ipv4/ip_forward
-iptables -A FORWARD -s \$VM_SUBNET -d \$VXLAN_SUBNET -j ACCEPT
 sudo iptables -A FORWARD -s \$VM_SUBNET -d \$VXLAN_SUBNET -j ACCEPT
 sudo iptables -A FORWARD -s \$VXLAN_SUBNET -d \$VM_SUBNET -j ACCEPT
 sudo iptables -t nat -A POSTROUTING -s \$VM_SUBNET ! -d \$VXLAN_SUBNET -j MASQUERADE
-
+VM_SUBNET="10.243.10.0/24"
+sudo iptables -A FORWARD -s \$VM_SUBNET -d \$VXLAN_SUBNET -j ACCEPT
+sudo iptables -A FORWARD -s \$VXLAN_SUBNET -d \$VM_SUBNET -j ACCEPT
+sudo iptables -t nat -A POSTROUTING -s \$VM_SUBNET ! -d \$VXLAN_SUBNET -j MASQUERADE
 EOF
 fi
 
