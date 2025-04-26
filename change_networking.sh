@@ -8,14 +8,15 @@
 
 for server_ip in "$@"; do
     echo "Processing server: $server_ip"
+    ssh-keygen -f '/home/marian/.ssh/known_hosts' -R ${server_ip} 2>/dev/null
     
     ssh "$server_ip" '
         # Get the IP address used for the SSH connection
-        CONNECTION_IP=$(echo $SSH_CONNECTION | awk "{print \$3}")
+        CONNECTION_IP=$(echo $SSH_CONNECTION | cut -d" " -f3)
         echo "Connected using IP: $CONNECTION_IP"
         
         # Get the interface that has this IP
-        CONNECTION_IFACE=$(ip -o addr show | grep "$CONNECTION_IP" | awk "{print \$2}")
+        CONNECTION_IFACE=$(ip -o addr show | grep "$CONNECTION_IP" | awk '\''{print $2}'\'')
         echo "Connected interface: $CONNECTION_IFACE"
         
         if [ -z "$CONNECTION_IFACE" ]; then
@@ -33,7 +34,7 @@ for server_ip in "$@"; do
         echo "Setting default gateway to: $DEFAULT_GW"
         
         # Get network prefix (CIDR)
-        NETMASK=$(ip -o addr show | grep "$CONNECTION_IP" | awk "{print \$4}" | cut -d"/" -f2)
+        NETMASK=$(ip -o addr show | grep "$CONNECTION_IP" | awk '\''{print $4}'\'' | cut -d"/" -f2)
         if [ -z "$NETMASK" ]; then
             NETMASK="24"  # Use 24 as default if not found
         fi
@@ -79,4 +80,3 @@ EOF
 done
 
 echo "All servers processed."
-
