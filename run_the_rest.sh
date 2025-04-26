@@ -52,10 +52,10 @@ function wait_for_done() {
 }
 
 export LC_ALL=C
-ssh ${1} wget https://github.com/babs/multiping/releases/download/v1.5.0/multiping-linux-amd64.xz
-ssh ${1} unxz multiping-linux-amd64.xz
-ssh ${1} chmod +x multiping-linux-amd64
-# sudo ./multiping-linux-amd64  192.168.240.10{1..7} 10.241.144.{1..2} 10.241.144.{102..107}
+# ssh ${1} wget https://github.com/babs/multiping/releases/download/v1.5.0/multiping-linux-amd64.xz
+# ssh ${1} unxz multiping-linux-amd64.xz
+# ssh ${1} chmod +x multiping-linux-amd64
+# # sudo ./multiping-linux-amd64  192.168.240.10{1..7} 10.241.144.{1..2} 10.241.144.{102..107}
 
 nice_output "Copy setup scripts"
 for ((i=1; i<=$#; i++)); do
@@ -79,14 +79,14 @@ ssh $1 "sudo apt install -y uvtool virtinst > /dev/null 2>&1"
 ssh $1 "sudo -g libvirt uvt-simplestreams-libvirt sync release=noble arch=amd64"
 data="$(get_server_data ${1})"
 read hostname disk_size memory cpu_cores <<< "$data"
-ssh $1 "sudo -g libvirt uvt-kvm create --machine-type q35 --cpu \"${cpu_cores}\" --host-passthrough --memory \"${memory}000\" --disk \"400\" --unsafe-caching --bridge br0 --network-config /dev/stdin --ssh-public-key-file ~/.ssh/id_ed25519.pub --no-start  maas << 'EOF1'
+ssh $1 "sudo -g libvirt uvt-kvm create --machine-type ubuntu --cpu \"${cpu_cores}\" --host-passthrough --memory \"${memory}000\" --disk \"400\" --unsafe-caching --bridge br0 --network-config /dev/stdin --ssh-public-key-file ~/.ssh/id_ed25519.pub --no-start  maas << 'EOF1'
     network:
             version: 2
             ethernets:
-                enp1s0: 
+                ens3:
                     dhcp4: false
                     dhcp6: false
-                enp7s0: 
+                ens8:
                     dhcp4: false
                     dhcp6: false
             bridges:
@@ -96,7 +96,7 @@ ssh $1 "sudo -g libvirt uvt-kvm create --machine-type q35 --cpu \"${cpu_cores}\"
                     addresses:
                     - 10.241.144.2/21
                     interfaces:
-                    - enp1s0
+                    - ens3
                     parameters:
                         forward-delay: \"0\"
                         stp: false
@@ -106,9 +106,9 @@ ssh $1 "sudo -g libvirt uvt-kvm create --machine-type q35 --cpu \"${cpu_cores}\"
                             - 10.239.8.11
                             - 10.239.8.12
                             - 10.239.8.13
-                    # routes:
-                    # -   to: 192.168.240.0/24
-                    #     via: 10.241.144.1
+                    routes:
+                    -   to: 192.168.240.0/24
+                        via: 10.241.144.1
 
                 brinternal:
                     dhcp4: false
@@ -116,16 +116,16 @@ ssh $1 "sudo -g libvirt uvt-kvm create --machine-type q35 --cpu \"${cpu_cores}\"
                     addresses:
                     - 192.168.110.2/24
                     interfaces:
-                    - enp7s0.2743
+                    - ens8.2743
                     mtu: 1500
                     parameters:
                         forward-delay: \"0\"
                         stp: false
             vlans:
-                enp7s0.2743:
+                ens8.2743:
                     id: 2743
                     mtu: 1500
-                    link: enp7s0
+                    link: ens8
 EOF1
 "
 ssh $1 sudo -g libvirt virsh -c qemu:///system attach-interface "maas" bridge br0 --model virtio --config
