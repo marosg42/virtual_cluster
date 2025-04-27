@@ -704,8 +704,6 @@ class TestflingerSubmitter:
             print(yaml.dump(valid_results, sort_keys=False))
             ip_addresses = [result["ip"] for result in valid_results if result["ip"]]
             print(" ".join(ip_addresses))
-            print("\n")
-
             return 0
 
         except TestflingerError as e:
