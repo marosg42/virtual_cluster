@@ -161,29 +161,24 @@ ssh $1 "while ! ssh -o StrictHostKeyChecking=no 10.241.144.2 hostname ; do sleep
 ssh $1 -- ssh -o StrictHostKeyChecking=no 10.241.144.2 hostname
 scp $1:.ssh/id_ed25519.pub output/
 
-nice_output "Start MAAS installation"
-ssh $1 "cd project; fce --debug build --layer maas --steps ..maas:configure_networks"
-ssh $1 "scp .ssh/id_ed25519 10.241.144.2:.ssh/"
-
-
 nice_output "Generate keys"
-ssh $1 "ssh 10.241.144.2 sudo ssh-keygen -f  /var/snap/maas/current/root/.ssh/id_rsa -y" > output/maas_ssh_pub_key
+
+ssh $1 "ssh-keygen -t rsa -f ~/.ssh/id_rsa_libvirt -N '' -C 'libvirt@infras'"
+ssh $1 "scp ~/.ssh/id_rsa_libvirt 10.241.144.2:"
+ssh $1 "ssh 10.241.144.2 sudo cp id_rsa_libvirt /etc/ssh/"
+ssh $1 "ssh 10.241.144.2 sudo chmod 644  /etc/ssh/id_rsa_libvirt"
+ssh $1 "cat ~/.ssh/id_rsa_libvirt.pub" > output/maas_ssh_pub_key
+
 ssh $1 "ssh 10.241.144.2 ssh-keygen -f .ssh/id_ed25519 -y" > output/ubuntu_ssh_pub_key
+ssh $1 "echo "\\\ \\\ \\\ \\\ StrictHostKeyChecking no" > ssh_config"
+ssh $1 "echo "\\\ \\\ \\\ \\\ IdentityFile /etc/ssh/id_rsa_libvirt" >> ssh_config"
+ssh $1 -- scp ssh_config 10.241.144.2:
+ssh $1 "ssh 10.241.144.2 \"cat ssh_config|sudo tee -a /etc/ssh/ssh_config\""
+ssh $1 "scp .ssh/id_ed25519 10.241.144.2:.ssh/"
 
 nice_output "Distribute keys"
 for ((i=2; i<=$#; i++)); do
-    scp output/id_ed25519.pub output/maas_ssh_pub_key output/ubuntu_ssh_pub_key ${!i}:
-    ssh ${!i} "cat maas_ssh_pub_key >> .ssh/authorized_keys ; cat ubuntu_ssh_pub_key >> .ssh/authorized_keys ; cat id_ed25519.pub >> .ssh/authorized_keys"
+    scp output/maas_ssh_pub_key ${!i}:
+    scp project_caracal/generated/maas/virsh_rsa.pub ${!i}:
+    ssh ${!i} "cat maas_ssh_pub_key >> .ssh/authorized_keys ; cat virsh_rsa.pub >> .ssh/authorized_keys ; "
 done
-
-nice_output "Run keyscan on MAAS VM"
-for ((i=2; i<=$#; i++)); do
-    ssh ${1} "ssh 10.241.144.2 \"ssh-keyscan 10.241.144.$((i+100)) >> .ssh/known_hosts\""
-    ssh ${1} "ssh 10.241.144.2 \"ssh-keyscan 192.168.240.$((i+100)) >> .ssh/known_hosts\""
-done
-
-nice_output "Finish MAAS installation"
-ssh $1 "cd project; fce --debug build --layer maas --steps enlist_nodes..configure_vms"
-
-nice_output "Install Juju"
-ssh $1 "cd project; fce --debug build --layer juju_maas_controller"
