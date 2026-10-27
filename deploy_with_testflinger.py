@@ -19,14 +19,18 @@ import threading
 import time
 import yaml
 
+from base64 import b64encode
 from pathlib import Path
 from queue import Queue, Empty
-from urllib.request import urlopen, URLError
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen, URLError
 
 LOGGER = logging.getLogger("testflinger-submitter")
 
 # Configuration Constants
-AGENT_DATA_URL = "CHANGEME"
+TESTFLINGER_SERVER = "https://testflinger.canonical.com"
+AGENT_DATA_URL = f"{TESTFLINGER_SERVER}/v1/agents/data"
+TOKEN_URL = f"{TESTFLINGER_SERVER}/v1/oauth2/token"
 OUTPUT_DIR = "output"
 DEFAULT_AGENT_LIMIT = 15
 DEFAULT_COMPLETION_THRESHOLD = 11
@@ -61,10 +65,82 @@ def configure_logging(project_dir="generated/sunbeam", log_level=logging.DEBUG):
         default_logger.addHandler(fh)
 
 
+def load_dotenv(path=".env"):
+    """Populate os.environ from a .env file (KEY=VALUE per line).
+
+    Existing environment variables take precedence and are not overwritten.
+    A missing file is silently ignored.
+    """
+    p = Path(path)
+    if not p.exists():
+        return
+    for raw in p.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :]
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 class TestflingerError(Exception):
     """Base exception for testflinger-related errors."""
 
     pass
+
+
+_tf_token = None
+_tf_token_lock = threading.Lock()
+
+
+def fetch_testflinger_token():
+    """Exchange TESTFLINGER_CLIENT_ID/TESTFLINGER_SECRET_KEY for a JWT access
+    token via the /v1/oauth2/token endpoint (HTTP Basic auth), mirroring
+    testflinger-cli.
+
+    Raises:
+        TestflingerError: If credentials are missing or authentication fails
+    """
+    client_id = os.environ.get("TESTFLINGER_CLIENT_ID")
+    secret_key = os.environ.get("TESTFLINGER_SECRET_KEY")
+    if not client_id or not secret_key:
+        raise TestflingerError(
+            "TESTFLINGER_CLIENT_ID and TESTFLINGER_SECRET_KEY must be set"
+        )
+    encoded = b64encode(f"{client_id}:{secret_key}".encode()).decode("ascii")
+    request = Request(
+        TOKEN_URL,
+        data=b"",
+        headers={"Authorization": f"Basic {encoded}"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read().decode())
+    except (URLError, json.JSONDecodeError) as e:
+        raise TestflingerError(f"Testflinger authentication failed: {e}") from e
+    if not isinstance(payload, dict) or "access_token" not in payload:
+        raise TestflingerError("Testflinger authentication returned no access token")
+    LOGGER.info("Obtained Testflinger access token")
+    return payload["access_token"]
+
+
+def testflinger_token(force_refresh=False):
+    """Return the cached Testflinger access token, fetching a new one if
+    none is cached yet or force_refresh is set (e.g. after it expired)."""
+    global _tf_token
+    with _tf_token_lock:
+        if force_refresh or _tf_token is None:
+            _tf_token = fetch_testflinger_token()
+        return _tf_token
 
 
 class JobAlreadyCancelledError(TestflingerError):
@@ -231,8 +307,11 @@ class TestflingerSubmitter:
         Raises:
             TestflingerError: If API request fails
         """
-        try:
-            with urlopen(AGENT_DATA_URL, timeout=30) as response:
+        def fetch(token):
+            request = Request(
+                AGENT_DATA_URL, headers={"Authorization": f"Bearer {token}"}
+            )
+            with urlopen(request, timeout=30) as response:
                 if response.getcode() != 200:
                     LOGGER.error(
                         "Failed to retrieve agent data, status code: %s",
@@ -242,6 +321,15 @@ class TestflingerSubmitter:
                         f"API returned status code {response.getcode()}"
                     )
                 return json.loads(response.read().decode())
+
+        try:
+            try:
+                return fetch(testflinger_token())
+            except HTTPError as e:
+                if e.code != 401:
+                    raise
+                LOGGER.info("Agent data returned 401; refreshing Testflinger token")
+                return fetch(testflinger_token(force_refresh=True))
         except (URLError, json.JSONDecodeError) as e:
             LOGGER.error("Error retrieving agent data: %s", str(e))
             raise TestflingerError("Failed to retrieve or parse agent data") from e
@@ -581,6 +669,11 @@ class TestflingerSubmitter:
             with open("cancel.sh", "w") as f:
                 f.write("#!/bin/bash\n\n")
                 f.write("# Auto-generated script to cancel testflinger jobs\n\n")
+                # testflinger-cli needs TESTFLINGER_CLIENT_ID/SECRET_KEY
+                f.write(
+                    'ENV_FILE="$(dirname "$0")/.env"\n'
+                    'if [ -f "$ENV_FILE" ]; then set -a; . "$ENV_FILE"; set +a; fi\n\n'
+                )
                 for job_id in self.job_ids:
                     f.write(f"testflinger-cli cancel {job_id}\n")
             os.chmod("cancel.sh", 0o755)
@@ -742,7 +835,15 @@ def parse_arguments():
 
 if __name__ == "__main__":
     args = parse_arguments()
+    load_dotenv()
     configure_logging()
+
+    # testflinger-cli subprocesses inherit these from os.environ
+    try:
+        testflinger_token()
+    except TestflingerError as e:
+        LOGGER.error("%s", e)
+        sys.exit(2)
 
     submitter = TestflingerSubmitter(
         args.server_file,

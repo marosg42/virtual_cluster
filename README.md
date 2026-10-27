@@ -5,6 +5,12 @@ PoC for creating virtual cluster. This is very environment specific project I do
 # Use
 
 - deploy_with_testflinger.py <input_file>
+  - requires `TESTFLINGER_CLIENT_ID` and `TESTFLINGER_SECRET_KEY`, either exported or in a `.env` file in the current directory (exported variables take precedence):
+    ```
+    TESTFLINGER_CLIENT_ID=my-client-id
+    TESTFLINGER_SECRET_KEY=my-secret
+    ```
+    an access token is obtained from Testflinger and regenerated automatically when it expires
   - <input_file> is a text file with a list of queues for Testflinger, one queue per line, nothing fancy
   - start deploying 15 machines, when 11 are deployed kill the rest
 - change_networking.sh <list_of_IPs>
