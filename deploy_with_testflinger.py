@@ -13,6 +13,7 @@ import logging
 import os
 import random
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -837,6 +838,12 @@ if __name__ == "__main__":
     args = parse_arguments()
     load_dotenv()
     configure_logging()
+
+    if not shutil.which("testflinger-cli"):
+        LOGGER.error(
+            "testflinger-cli not found in PATH (install: sudo snap install testflinger-cli)"
+        )
+        sys.exit(2)
 
     # testflinger-cli subprocesses inherit these from os.environ
     try:

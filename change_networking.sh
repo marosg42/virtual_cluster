@@ -6,11 +6,13 @@
 #
 # Goal is to eliminate IPs from the same network and change those servers that have default route through 101 VLAN
 
+FAILED=0
 for server_ip in "$@"; do
     echo "Processing server: $server_ip"
-    ssh-keygen -f '/home/marian/.ssh/known_hosts' -R ${server_ip} 2>/dev/null
-    
-    ssh "$server_ip" '
+    # Re-provisioned machines get new host keys
+    ssh-keygen -R "${server_ip}" >/dev/null 2>&1
+
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 "$server_ip" '
         # Get the IP address used for the SSH connection
         CONNECTION_IP=$(echo $SSH_CONNECTION | cut -d" " -f3)
         echo "Connected using IP: $CONNECTION_IP"
@@ -74,9 +76,11 @@ EOF
         echo "Successfully reconfigured networking on $server_ip"
     else
         echo "Failed to reconfigure networking on $server_ip"
+        FAILED=1
     fi
     
     echo "-------------------------------------------"
 done
 
 echo "All servers processed."
+exit $FAILED
