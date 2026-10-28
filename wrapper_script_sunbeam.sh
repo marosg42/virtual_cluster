@@ -3,8 +3,7 @@
 # Set variables
 DEPLOY_SCRIPT="deploy_with_testflinger.py"
 SERVER_FILE="servers.txt"
-AGENT_LIMIT=10
-COMPLETION_THRESHOLD=7
+MACHINE_COUNT=7
 OUTPUT_DIR="output"
 IP_FILE="${OUTPUT_DIR}/ips.txt"
 DEPLOY_OUTPUT="${OUTPUT_DIR}/deploy_output.txt"
@@ -13,7 +12,7 @@ DEPLOY_OUTPUT="${OUTPUT_DIR}/deploy_output.txt"
 echo "Running deployment script..."
 mkdir -p "$OUTPUT_DIR"
 # stdout holds the results; the last line is the space-separated list of IPs
-python3 $DEPLOY_SCRIPT $SERVER_FILE --agent-limit $AGENT_LIMIT --completion-threshold $COMPLETION_THRESHOLD | tee "$DEPLOY_OUTPUT"
+python3 $DEPLOY_SCRIPT $SERVER_FILE --count $MACHINE_COUNT | tee "$DEPLOY_OUTPUT"
 if [ ${PIPESTATUS[0]} -ne 0 ]; then
     echo "Deployment script failed. Exiting."
     exit 1
@@ -45,11 +44,11 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Step 5: Run run_the_rest.sh
-echo "Running run_the_rest.sh..."
+# Step 5: Run run_the_rest_for_sunbeam.sh
+echo "Running run_the_rest_for_sunbeam.sh..."
 ./run_the_rest_for_sunbeam.sh $(cat $IP_FILE)
 if [ $? -ne 0 ]; then
-    echo "run_the_rest.sh failed. Exiting."
+    echo "run_the_rest_for_sunbeam.sh failed. Exiting."
     exit 1
 fi
 
